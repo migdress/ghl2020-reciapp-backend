@@ -12,6 +12,8 @@ import (
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/repositories"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
 var ErrUsernameEmpty = errors.New("username cannot be empty")
@@ -37,6 +39,17 @@ type Response struct {
 	LastName  string            `json:"lastname"`
 	Type      string            `json:"type"`
 	Locations []models.Location `json:"location"`
+}
+
+type ResponseLocation struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Country   string  `json:"country"`
+	City      string  `json:"city"`
+	Address1  string  `json:"address_1"`
+	Address2  string  `json:"address_2"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
 }
 
 func Adapter(usersRepo UsersRepository, locationsRepo LocationsRepository) Handler {
@@ -65,6 +78,19 @@ func Adapter(usersRepo UsersRepository, locationsRepo LocationsRepository) Handl
 		if err != nil && err != repositories.ErrNoLocationsFound {
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
+		responseLocations := make([]ResponseLocation, len(locations))
+		for i, location := range locations {
+			responseLocations[i] = ResponseLocation{
+				ID:        location.ID,
+				Name:      location.Name,
+				Country:   location.Country,
+				City:      location.City,
+				Address1:  location.Address1,
+				Address2:  location.Address2,
+				Latitude:  location.Latitude,
+				Longitude: location.Longitude,
+			}
+		}
 
 		response := Response{
 			Username:  user.Username,
@@ -87,13 +113,26 @@ func main() {
 	if usersTable == "" {
 		panic("DYNAMODB_USERS cannot be empty")
 	}
-	usersRepo := repositories.NewDynamoDBUsersRepository(usersTable)
-
 	locationsTable := os.Getenv("DYNAMODB_LOCATIONS")
 	if locationsTable == "" {
 		panic("DYNAMODB_LOCATIONS cannot be empty")
 	}
-	locationsRepo := repositories.NewDynamoDBLocationsRepository(locationsTable)
+	userLocationsTable := os.Getenv("DYNAMODB_USER_LOCATIONS")
+	if userLocationsTable == "" {
+		panic("DYNAMODB_USER_LOCATIONS cannot be empty")
+	}
+
+	session := session.New()
+	dynamodbClient := dynamodb.New(session)
+	usersRepo := repositories.NewDynamoDBUsersRepository(
+		dynamodbClient,
+		usersTable,
+	)
+	locationsRepo := repositories.NewDynamoDBLocationsRepository(
+		dynamodbClient,
+		userLocationsTable,
+		locationsTable,
+	)
 
 	handler := Adapter(usersRepo, locationsRepo)
 	lambda.Start(handler)

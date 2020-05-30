@@ -6,3 +6,7 @@ build:
 
 deploy: build
 	sls deploy --verbose
+
+redeploy: build
+	sls remove -v
+	sls deploy -v

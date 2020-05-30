@@ -21,3 +21,5 @@ vendor
 *.out
 
 config.*.yml
+
+node_modules/
