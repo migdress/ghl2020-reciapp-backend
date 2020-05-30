@@ -12,7 +12,7 @@ resource "aws_dynamodb_table" "user-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
@@ -24,11 +24,11 @@ resource "aws_dynamodb_table" "user-dynamodb-table" {
   }
 
   global_secondary_index {
-    name               = "by_username"
-    hash_key           = "username"
-    write_capacity     = 2
-    read_capacity      = 2
-    projection_type    = "ALL"
+    name            = "by_username"
+    hash_key        = "username"
+    write_capacity  = 2
+    read_capacity   = 2
+    projection_type = "ALL"
   }
 
   tags = {
@@ -45,7 +45,7 @@ resource "aws_dynamodb_table" "location-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
@@ -65,7 +65,7 @@ resource "aws_dynamodb_table" "recyclingpackage-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
@@ -86,19 +86,24 @@ resource "aws_dynamodb_table" "UserLocation-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
   }
 
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
   global_secondary_index {
-    name               = "by_userid"
-    hash_key           = "id"
-    write_capacity     = 2
-    read_capacity      = 2
-    projection_type    = "ALL"
-  }  
+    name            = "by_user_id"
+    hash_key        = "user_id"
+    write_capacity  = 2
+    read_capacity   = 2
+    projection_type = "ALL"
+  }
 
   tags = {
     Name        = "env"
@@ -115,7 +120,7 @@ resource "aws_dynamodb_table" "PickingRoute-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
@@ -134,7 +139,7 @@ resource "aws_dynamodb_table" "LocationNeedsPickup-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
@@ -154,7 +159,7 @@ resource "aws_dynamodb_table" "LocationbalanceMovements-dynamodb-table" {
   read_capacity  = 2
   write_capacity = 2
   hash_key       = "id"
-  
+
   attribute {
     name = "id"
     type = "S"
