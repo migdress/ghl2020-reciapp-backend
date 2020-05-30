@@ -19,7 +19,7 @@ type PickingPoints struct {
 	Address2   string  `json:"address2"`
 }
 
-type Routes struct {
+type Route struct {
 	ID            string `json:"id"`
 	Materials     []string
 	Sector        string `json:"sector"`

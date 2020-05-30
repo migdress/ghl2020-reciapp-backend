@@ -126,6 +126,23 @@ resource "aws_dynamodb_table" "PickingRoute-dynamodb-table" {
     type = "S"
   }
 
+  attribute {
+    name = "active"
+    type = "N"
+  }
+
+  attribute {
+    name = "starts_at"
+    type = "S"
+  }
+  global_secondary_index {
+    name            = "by_active_and_starts_at"
+    hash_key        = "active"
+    range_key       = "starts_at"
+    write_capacity  = 2
+    read_capacity   = 2
+    projection_type = "ALL"
+  }
   tags = {
     Name        = "env"
     Environment = "recyapp"
