@@ -34,11 +34,12 @@ type Request struct {
 }
 
 type Response struct {
+	ID        string            `json:"id"`
 	Username  string            `json:"username"`
 	FirstName string            `json:"firstname"`
 	LastName  string            `json:"lastname"`
 	Type      string            `json:"type"`
-	Locations []models.Location `json:"location"`
+	Locations []models.Location `json:"locations"`
 }
 
 type ResponseLocation struct {
@@ -93,6 +94,7 @@ func Adapter(usersRepo UsersRepository, locationsRepo LocationsRepository) Handl
 		}
 
 		response := Response{
+			ID:        user.ID,
 			Username:  user.Username,
 			FirstName: user.Firstname,
 			LastName:  user.Lastname,

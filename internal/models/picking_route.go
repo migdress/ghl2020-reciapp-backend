@@ -8,7 +8,7 @@ const (
 	Technology = "technology"
 )
 
-type PickingPoints struct {
+type PickingPoint struct {
 	Name       string  `json:"name"`
 	LocationID string  `json:"locationid"`
 	Country    string  `json:"country"`
@@ -19,11 +19,11 @@ type PickingPoints struct {
 	Address2   string  `json:"address2"`
 }
 
-type Routes struct {
+type Route struct {
 	ID            string `json:"id"`
 	Materials     []string
 	Sector        string `json:"sector"`
 	Shift         string `json:"shift"`
 	Date          string `json:"date"`
-	PickingPoints []PickingPoints
+	PickingPoints []PickingPoint
 }

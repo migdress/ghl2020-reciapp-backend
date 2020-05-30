@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/repositories"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
 var ErrUsernameEmpty = errors.New("username cannot be empty")
@@ -18,7 +23,7 @@ var ErrUsernameEmpty = errors.New("username cannot be empty")
 type Handler func(ctx context.Context) (events.APIGatewayProxyResponse, error)
 
 type RoutesRepoRepository interface {
-	FindAvailableRoutes(currentTime time.Time) ([]models.Routes, error)
+	FindAvailableRoutes(currentTime time.Time, maxTime time.Time) ([]models.Route, error)
 }
 
 type ResponseRoutePickingPoint struct {
@@ -45,10 +50,13 @@ type Response struct {
 	Routes []ResponseRoute
 }
 
-func Adapter(routesRepo RoutesRepoRepository) Handler {
+func Adapter(routesRepo RoutesRepoRepository, hoursOffset int) Handler {
 	return func(ctx context.Context) (events.APIGatewayProxyResponse, error) {
 
-		routes, err := routesRepo.FindAvailableRoutes(time.Now().UTC())
+		now := time.Now().UTC()
+		maxTime := now.Add(time.Hour * time.Duration(hoursOffset))
+
+		routes, err := routesRepo.FindAvailableRoutes(now, maxTime)
 		if err != nil {
 			if err == repositories.ErrUserNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
@@ -94,12 +102,26 @@ func Adapter(routesRepo RoutesRepoRepository) Handler {
 }
 
 func main() {
-	// pickingRouteTable := os.Getenv("DYNAMODB_PICKING_ROUTES")
-	// if pickingRouteTable == "" {
-	// 	panic("DYNAMODB_PICKING_ROUTES cannot be empty")
-	// }
-	// usersRepo := repositories.NewDynamoDBUsersRepository(usersTable)
+	routesTable := os.Getenv("DYNAMODB_PICKING_ROUTES")
+	if routesTable == "" {
+		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
+	}
+	hoursOffsetString := os.Getenv("HOURS_OFFSET")
+	if hoursOffsetString == "" {
+		panic("HOURS_OFFSET cannot be empty")
+	}
+	hoursOffset, err := strconv.Atoi(hoursOffsetString)
+	if err != nil {
+		panic("HOURS_OFFSET must be an integer")
+	}
 
-	// handler := Adapter(usersRepo, locationsRepo)
-	// lambda.Start(handler)
+	session := session.New()
+	dynamodbClient := dynamodb.New(session)
+
+	routesRepo := repositories.NewDynamoDBRoutesRepository(
+		dynamodbClient,
+		routesTable,
+	)
+	handler := Adapter(routesRepo, hoursOffset)
+	lambda.Start(handler)
 }

@@ -3,3 +3,8 @@ config:
 
     dynamodb_users: "users"
     dynamodb_locations: "locations"
+    dynamodb_user_locations: "user_locations"
+    dynamodb_picking_routes: "picking_routes"
+
+    hours_offset: 7
+
