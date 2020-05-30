@@ -1,0 +1,5 @@
+config:
+    account: ""
+
+    dynamodb_users: "users"
+    dynamodb_locations: "locations"
