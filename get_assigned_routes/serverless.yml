@@ -1,4 +1,4 @@
-service: get-available-routes
+service: get-assigned-routes
 
 frameworkVersion: ">=1.28.0 <2.0.0"
 
@@ -10,7 +10,7 @@ custom:
   customDomain:
     active: true
     stage: ${self:provider.stage}
-    domainName: get-available-routes.reciapp.quartrino.com
+    domainName: get-assigned-routes.reciapp.quartrino.com
     createRoute53Record: true
 
 provider:
@@ -20,7 +20,7 @@ provider:
   runtime: go1.x
   environment:
     DYNAMODB_PICKING_ROUTES: ${self:custom.config.dynamodb_picking_routes}
-    HOURS_OFFSET: ${self:custom.config.hours_offset}
+    DYNAMODB_USERS: ${self:custom.config.dynamodb_users}
     TIMEZONE: ${self:custom.config.timezone}
 
   iamRoleStatements:
@@ -30,6 +30,8 @@ provider:
       Resource:
         - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}
         - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}/index/*
 
 package:
   exclude:

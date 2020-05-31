@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
@@ -24,47 +25,74 @@ type RoutesRepoRepository interface {
 	GetAssignedRoutesbyUserID(userID string) ([]models.Route, error)
 }
 
-type ResponseRoutePickingPoint struct {
-	ID         string  `json:"id"`
-	LocationID string  `json:"locationid"`
-	Country    string  `json:"country"`
-	City       string  `json:"city"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
-	Address1   string  `json:"address1"`
-	Address2   string  `json:"address2"`
+type UsersRepository interface {
+	Find(userID string) (models.User, error)
 }
 
-type ResponseAssignedRoutebyUserID struct {
-	ID            string   `json:"id"`
-	Materials     []string `json:"materials"`
-	Sector        string   `json:"sector"`
-	Shift         string   `json:"shift"`
-	Date          string   `json:"date"`
-	PickingPoints []ResponseRoutePickingPoint
+type TimeHelper interface {
+	ToLatamFormat(d time.Time) (string, error)
+	ToISO8601(d time.Time) (string, error)
+}
+
+type ResponseRoutePickingPoint struct {
+	ID         string   `json:"id"`
+	LocationID string   `json:"locationid"`
+	Country    string   `json:"country"`
+	City       string   `json:"city"`
+	Latitude   float64  `json:"latitude"`
+	Longitude  float64  `json:"longitude"`
+	Address1   string   `json:"address1"`
+	Address2   string   `json:"address2"`
+	Materials  []string `json:"materials"`
+}
+
+type ResponseRoute struct {
+	ID            string                      `json:"id"`
+	Materials     []string                    `json:"materials"`
+	Sector        string                      `json:"sector"`
+	Shift         string                      `json:"shift"`
+	Date          string                      `json:"date"`
+	Status        string                      `json:"status"`
+	PickingPoints []ResponseRoutePickingPoint `json:"picking_points"`
 }
 
 type Response struct {
-	AssignedRoutes []ResponseAssignedRoutebyUserID `json:"assigned_routes"`
+	AssignedRoutes []ResponseRoute `json:"assigned_routes"`
 }
 
-func Adapter(routesRepo RoutesRepoRepository) Handler {
+func Adapter(
+	routesRepo RoutesRepoRepository,
+	usersRepo UsersRepository,
+	timeHelper TimeHelper,
+) Handler {
 	return func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+		userID := req.PathParameters["user_id"]
 
-		usertID := req.PathParameters["user_id"]
-
-		if usertID == "" {
+		if userID == "" {
 			return internal.Error(http.StatusBadRequest, ErrUserIDEmpty), nil
 		}
-		routes, err := routesRepo.GetAssignedRoutesbyUserID(usertID)
+
+		_, err := usersRepo.Find(userID)
 		if err != nil {
-			if err == repositories.ErrRouteNotFound {
+			if err == repositories.ErrUserNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
+			}
+
+			return internal.Error(http.StatusInternalServerError, err), nil
+		}
+
+		routes, err := routesRepo.GetAssignedRoutesbyUserID(userID)
+		if err != nil {
+			if err == repositories.ErrNoAssignedRoutes {
+				responseBytes, _ := json.Marshal(Response{
+					AssignedRoutes: []ResponseRoute{},
+				})
+				return internal.Respond(http.StatusOK, string(responseBytes)), nil
 			}
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 
-		assignedresponseRoutes := make([]ResponseAssignedRoutebyUserID, len(routes))
+		assignedresponseRoutes := make([]ResponseRoute, len(routes))
 		for i, route := range routes {
 			responseRoutesPickingPoints := make([]ResponseRoutePickingPoint, len(route.PickingPoints))
 			for j, pp := range route.PickingPoints {
@@ -77,15 +105,22 @@ func Adapter(routesRepo RoutesRepoRepository) Handler {
 					Longitude:  pp.Longitude,
 					Address1:   pp.Address1,
 					Address2:   pp.Address2,
+					Materials:  pp.Materials,
 				}
 			}
-			assignedresponseRoutes[i] = ResponseAssignedRoutebyUserID{
-				ID:        route.ID,
-				Materials: route.Materials,
-				Sector:    route.Sector,
-				Shift:     route.Shift,
-				//	Date:          startsAt,
+
+			startsAt, err := timeHelper.ToISO8601(*route.StartsAt)
+			if err != nil {
+				return internal.Error(http.StatusInternalServerError, err), nil
+			}
+			assignedresponseRoutes[i] = ResponseRoute{
+				ID:            route.ID,
+				Materials:     route.Materials,
+				Sector:        route.Sector,
+				Shift:         route.Shift,
+				Date:          startsAt,
 				PickingPoints: responseRoutesPickingPoints,
+				Status:        route.Status,
 			}
 		}
 		response := Response{
@@ -106,9 +141,9 @@ func main() {
 		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
 	}
 
-	hoursOffsetString := os.Getenv("HOURS_OFFSET")
-	if hoursOffsetString == "" {
-		panic("HOURS_OFFSET cannot be empty")
+	usersTable := os.Getenv("DYNAMODB_USERS")
+	if usersTable == "" {
+		panic("DYNAMODB_USERS cannot be empty")
 	}
 
 	timezone := os.Getenv("TIMEZONE")
@@ -121,14 +156,21 @@ func main() {
 		panic(err)
 	}
 
+	uuidHelper := internal.NewUUIDHelper()
+
 	session := session.New()
 	dynamodbClient := dynamodb.New(session)
+	usersRepo := repositories.NewDynamoDBUsersRepository(
+		dynamodbClient,
+		usersTable,
+	)
 
 	routesRepo := repositories.NewDynamoDBRoutesRepository(
 		dynamodbClient,
 		routesTable,
 		timeHelper,
+		uuidHelper,
 	)
-	handler := Adapter(routesRepo)
+	handler := Adapter(routesRepo, usersRepo, timeHelper)
 	lambda.Start(handler)
 }

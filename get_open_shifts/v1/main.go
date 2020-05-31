@@ -30,14 +30,16 @@ type RoutesRepoRepository interface {
 type TimeHelper interface {
 	NowWithTimezone() (time.Time, error)
 	ToISO8601(d time.Time) (string, error)
+	ToLatamFormat(d time.Time) (string, error)
 }
 
 type ResponseShift struct {
-	ID        string   `json:"id"`
-	Materials []string `json:"materials"`
-	Sector    string   `json:"sector"`
-	Shift     string   `json:"shift"`
-	Date      string   `json:"date"`
+	ID            string   `json:"id"`
+	Materials     []string `json:"materials"`
+	Sector        string   `json:"sector"`
+	Shift         string   `json:"shift"`
+	Date          string   `json:"date"`
+	FormattedDate string   `json:"formatted_date"`
 }
 
 type Response struct {
@@ -78,12 +80,19 @@ func Adapter(
 			if err != nil {
 				return internal.Error(http.StatusInternalServerError, err), nil
 			}
+
+			latamDateFormat, err := timeHelper.ToLatamFormat(*route.StartsAt)
+			if err != nil {
+				return internal.Error(http.StatusInternalServerError, err), nil
+			}
+
 			responseRoutes[i] = ResponseShift{
-				ID:        route.ID,
-				Materials: route.Materials,
-				Sector:    route.Sector,
-				Shift:     route.Shift,
-				Date:      startsAt,
+				ID:            route.ID,
+				Materials:     route.Materials,
+				Sector:        route.Sector,
+				Shift:         route.Shift,
+				Date:          startsAt,
+				FormattedDate: latamDateFormat,
 			}
 		}
 		response := Response{

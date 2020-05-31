@@ -29,29 +29,32 @@ type RoutesRepoRepository interface {
 
 type TimeHelper interface {
 	NowWithTimezone() (time.Time, error)
+	ToLatamFormat(d time.Time) (string, error)
 	ToISO8601(d time.Time) (string, error)
 }
 
 type ResponseRoutePickingPoint struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	LocationID string  `json:"locationid"`
-	Country    string  `json:"country"`
-	City       string  `json:"city"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
-	Address1   string  `json:"address1"`
-	Address2   string  `json:"address2"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	LocationID string   `json:"locationid"`
+	Country    string   `json:"country"`
+	City       string   `json:"city"`
+	Latitude   float64  `json:"latitude"`
+	Longitude  float64  `json:"longitude"`
+	Address1   string   `json:"address1"`
+	Address2   string   `json:"address2"`
+	Materials  []string `json:"materials"`
 }
 
 type ResponseRoute struct {
-	ID            string   `json:"id"`
-	Materials     []string `json:"materials"`
-	Sector        string   `json:"sector"`
-	Status        string   `json:"status"`
-	Shift         string   `json:"shift"`
-	Date          string   `json:"date"`
-	PickingPoints []ResponseRoutePickingPoint
+	ID            string                      `json:"id"`
+	Materials     []string                    `json:"materials"`
+	Sector        string                      `json:"sector"`
+	Status        string                      `json:"status"`
+	Shift         string                      `json:"shift"`
+	Date          string                      `json:"date"`
+	FormattedDate string                      `json:"formatted_date"`
+	PickingPoints []ResponseRoutePickingPoint `json:"picking_points"`
 }
 
 type Response struct {
@@ -89,6 +92,7 @@ func Adapter(
 		for i, route := range routes {
 			responseRoutesPickingPoints := make([]ResponseRoutePickingPoint, len(route.PickingPoints))
 			for j, pp := range route.PickingPoints {
+				log.Printf("pickingPoint.Materials: %#v", pp.Materials)
 				responseRoutesPickingPoints[j] = ResponseRoutePickingPoint{
 					ID:         pp.ID,
 					LocationID: pp.LocationID,
@@ -98,10 +102,16 @@ func Adapter(
 					Longitude:  pp.Longitude,
 					Address1:   pp.Address1,
 					Address2:   pp.Address2,
+					Materials:  pp.Materials,
 				}
 			}
 
 			startsAt, err := timeHelper.ToISO8601(*route.StartsAt)
+			if err != nil {
+				return internal.Error(http.StatusInternalServerError, err), nil
+			}
+
+			latamDateFormat, err := timeHelper.ToLatamFormat(*route.StartsAt)
 			if err != nil {
 				return internal.Error(http.StatusInternalServerError, err), nil
 			}
@@ -112,6 +122,7 @@ func Adapter(
 				Shift:         route.Shift,
 				Status:        route.Status,
 				Date:          startsAt,
+				FormattedDate: latamDateFormat,
 				PickingPoints: responseRoutesPickingPoints,
 			}
 		}

@@ -14,6 +14,7 @@ import (
 )
 
 var ErrRouteNotFound = errors.New("route not found")
+var ErrNoAssignedRoutes = errors.New("no routes assigned")
 var ErrRouteAlreadyAssigned = errors.New("route already assigned")
 var ErrPickingPointAlreadyPinned = errors.New("picking point already pinned")
 var ErrNoOpenShifts = errors.New("there is no open shifts")
@@ -75,6 +76,33 @@ func (r *DynamoDBRoutesRepository) Find(routeID string) (models.Route, error) {
 		return models.Route{}, err
 	}
 	return routes[0], nil
+}
+
+func (r *DynamoDBRoutesRepository) GetAssignedRoutesbyUserID(userID string) ([]models.Route, error) {
+	out, err := r.client.Query(&dynamodb.QueryInput{
+		TableName:              aws.String(r.tableRoutes),
+		IndexName:              aws.String("by_gatherer_id_and_status"),
+		KeyConditionExpression: aws.String("gatherer_id = :userID and #status = :assigned"),
+		ExpressionAttributeNames: map[string]*string{
+			"#status": aws.String("status"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":userID": {
+				S: aws.String(userID),
+			},
+			":assigned": {
+				S: aws.String(models.RouteStatusAssigned),
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(out.Items) == 0 {
+		return nil, ErrNoAssignedRoutes
+	}
+
+	return r.hydrateRoutes(out.Items)
 }
 
 func (r *DynamoDBRoutesRepository) FindAvailableRoutes(
@@ -414,6 +442,14 @@ func (r *DynamoDBRoutesRepository) hydratePickingPoints(
 				return nil, err
 			}
 			pp.Created = &timeVal
+		}
+		if v, ok := item.M["materials"]; ok {
+			materials := make([]string, len(v.L))
+			for i, s := range v.L {
+				materials[i] = *s.S
+			}
+			pp.Materials = materials
+
 		}
 		pickingPoints[i] = pp
 	}

@@ -1,9 +1,37 @@
 package internal
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 type TimeHelper struct {
 	Timezone string
+}
+
+var spanishMonths = map[string]string{
+	"January":   "Enero",
+	"February":  "Febrero",
+	"March":     "Marzo",
+	"April":     "Abril",
+	"May":       "Mayo",
+	"June":      "Junio",
+	"July":      "Julio",
+	"August":    "Agosto",
+	"September": "Septiembre",
+	"October":   "Octubre",
+	"November":  "Noviembre",
+	"December":  "Diciembre",
+}
+
+var spanishDays = map[string]string{
+	"Sunday":    "Domingo",
+	"Monday":    "Lunes",
+	"Tuesday":   "Martes",
+	"Wednesday": "Miércoles",
+	"Thursday":  "Jueves",
+	"Friday":    "Viernes",
+	"Saturday":  "Sábado",
 }
 
 func NewTimeHelper(timezone string) (*TimeHelper, error) {
@@ -23,6 +51,20 @@ func (t *TimeHelper) ToISO8601(d time.Time) (string, error) {
 	}
 	timezoned := d.In(location)
 	return timezoned.Format("2006-01-02T15:04:05-0700"), nil
+}
+
+func (t *TimeHelper) ToLatamFormat(d time.Time) (string, error) {
+	location, err := time.LoadLocation(t.Timezone)
+	if err != nil {
+		return "", err
+	}
+	timezoned := d.In(location)
+	return fmt.Sprintf(
+		"%s %v de %s",
+		spanishDays[timezoned.Weekday().String()],
+		timezoned.Day(),
+		spanishMonths[timezoned.Month().String()],
+	), nil
 }
 
 func (t *TimeHelper) FromISO8601(d string) (time.Time, error) {
