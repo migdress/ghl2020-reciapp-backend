@@ -171,13 +171,19 @@ func (r *DynamoDBRoutesRepository) Assign(userID string, routeID string) error {
 						},
 					},
 					ConditionExpression: aws.String("gatherer_id = :unassigned"),
-					UpdateExpression:    aws.String("set gatherer_id = :userID"),
+					UpdateExpression:    aws.String("set gatherer_id = :userID, #status = :assigned"),
+					ExpressionAttributeNames: map[string]*string{
+						"#status": aws.String("status"),
+					},
 					ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 						":unassigned": {
 							S: aws.String("-"),
 						},
 						":userID": {
 							S: aws.String(userID),
+						},
+						":assigned": {
+							S: aws.String(models.RouteStatusAssigned),
 						},
 					},
 				},
