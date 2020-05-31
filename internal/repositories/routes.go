@@ -2,7 +2,9 @@ package repositories
 
 import (
 	"errors"
+	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
@@ -35,6 +37,34 @@ func NewDynamoDBRoutesRepository(
 		tableRoutes: tableRoutes,
 		timeHelper:  timeHelper,
 	}
+}
+
+func (r *DynamoDBRoutesRepository) Find(routeID string) (models.Route, error) {
+	out, err := r.client.Query(&dynamodb.QueryInput{
+		TableName: aws.String(r.tableRoutes),
+		KeyConditions: map[string]*dynamodb.Condition{
+			"id": {
+				ComparisonOperator: aws.String("EQ"),
+				AttributeValueList: []*dynamodb.AttributeValue{
+					{
+						S: aws.String(routeID),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return models.Route{}, err
+	}
+	if len(out.Items) == 0 {
+		return models.Route{}, ErrRouteNotFound
+	}
+
+	routes, err := r.hydrateRoutes(out.Items)
+	if err != nil {
+		return models.Route{}, err
+	}
+	return routes[0], nil
 }
 
 func (r *DynamoDBRoutesRepository) FindAvailableRoutes(
@@ -80,6 +110,41 @@ func (r *DynamoDBRoutesRepository) FindAvailableRoutes(
 	return r.hydrateRoutes(out.Items)
 }
 
+func (r *DynamoDBRoutesRepository) Assign(userID string, routeID string) error {
+	_, err := r.client.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+		TransactItems: []*dynamodb.TransactWriteItem{
+			{
+				Update: &dynamodb.Update{
+					TableName: aws.String(r.tableRoutes),
+					Key: map[string]*dynamodb.AttributeValue{
+						"id": {
+							S: aws.String(routeID),
+						},
+					},
+					ConditionExpression: aws.String("gatherer_id = :unassigned"),
+					UpdateExpression:    aws.String("set gatherer_id = :userID"),
+					ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+						":unassigned": {
+							S: aws.String("-"),
+						},
+						":userID": {
+							S: aws.String(userID),
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		log.Printf("routesRepo Assign error: %v\n", err)
+		if strings.Contains(err.Error(), "cancelled") {
+			return ErrRouteAlreadyAssigned
+		}
+		return err
+	}
+	return nil
+}
+
 func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.AttributeValue) ([]models.Route, error) {
 	routes := make([]models.Route, len(items))
 	for i, item := range items {
@@ -93,6 +158,9 @@ func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.At
 		}
 		if v, ok := item["shift"]; ok {
 			route.Shift = *v.S
+		}
+		if v, ok := item["gatherer_id"]; ok && *v.S != "-" {
+			route.GathererID = *v.S
 		}
 		if v, ok := item["materials"]; ok {
 			materials := make([]string, len(v.L))

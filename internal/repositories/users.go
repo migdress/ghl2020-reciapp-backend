@@ -22,6 +22,29 @@ func NewDynamoDBUsersRepository(client *dynamodb.DynamoDB, tableUsers string) *D
 	}
 }
 
+func (r *DynamoDBUsersRepository) Find(userID string) (models.User, error) {
+	out, err := r.client.Query(&dynamodb.QueryInput{
+		TableName: aws.String(r.tableUsers),
+		KeyConditions: map[string]*dynamodb.Condition{
+			"id": {
+				ComparisonOperator: aws.String("EQ"),
+				AttributeValueList: []*dynamodb.AttributeValue{
+					{
+						S: aws.String(userID),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return models.User{}, err
+	}
+	if len(out.Items) == 0 {
+		return models.User{}, ErrUserNotFound
+	}
+	return r.hydrate(out.Items[0]), nil
+}
+
 func (r *DynamoDBUsersRepository) FindByUsername(username string) (models.User, error) {
 	out, err := r.client.Query(&dynamodb.QueryInput{
 		TableName:              aws.String(r.tableUsers),

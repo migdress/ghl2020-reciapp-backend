@@ -1,8 +1,8 @@
 package models
 
 const (
-	UsernameTypeUser     = "user"
-	UsernameTypeGatherer = "gatherer"
+	UserTypeUser     = "user"
+	UserTypeGatherer = "gatherer"
 )
 
 type User struct {

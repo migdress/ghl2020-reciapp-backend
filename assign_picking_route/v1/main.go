@@ -4,16 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/repositories"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
 var ErrRouteIDEmpty = errors.New("route_id cannot be empty")
 var ErrUserIDEmpty = errors.New("user_id cannot be empty")
+var ErrWrongUserType = errors.New("user must of type gatherer")
 
 type Handler func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
 
@@ -47,7 +53,7 @@ func Adapter(usersRepo UsersRepository, routesRepo RoutesRepository) Handler {
 			return internal.Error(http.StatusBadRequest, ErrRouteIDEmpty), nil
 		}
 
-		_, err = usersRepo.Find(reqBody.UserID)
+		user, err := usersRepo.Find(reqBody.UserID)
 		if err != nil {
 			if err == repositories.ErrUserNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
@@ -56,7 +62,11 @@ func Adapter(usersRepo UsersRepository, routesRepo RoutesRepository) Handler {
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 
-		_, err = routesRepo.Find(reqBody.RouteID)
+		if user.Type != models.UserTypeGatherer {
+			return internal.Error(http.StatusForbidden, ErrWrongUserType), nil
+		}
+
+		route, err := routesRepo.Find(reqBody.RouteID)
 		if err != nil {
 			if err == repositories.ErrRouteNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
@@ -65,10 +75,15 @@ func Adapter(usersRepo UsersRepository, routesRepo RoutesRepository) Handler {
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 
+		log.Printf("route.GathererID: (%v), user.ID: (%v)\n", route.GathererID, user.ID)
+		if route.GathererID == user.ID {
+			return internal.Respond(http.StatusOK, ""), nil
+		}
+
 		err = routesRepo.Assign(reqBody.UserID, reqBody.RouteID)
 		if err != nil {
 			if err == repositories.ErrRouteAlreadyAssigned {
-				return internal.Error(http.StatusConflict, err), nil
+				return internal.Error(http.StatusUnprocessableEntity, err), nil
 			}
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
@@ -78,12 +93,40 @@ func Adapter(usersRepo UsersRepository, routesRepo RoutesRepository) Handler {
 }
 
 func main() {
-	// pickingRouteTable := os.Getenv("DYNAMODB_PICKING_ROUTES")
-	// if pickingRouteTable == "" {
-	// 	panic("DYNAMODB_PICKING_ROUTES cannot be empty")
-	// }
-	// usersRepo := repositories.NewDynamoDBUsersRepository(usersTable)
+	usersTable := os.Getenv("DYNAMODB_USERS")
+	if usersTable == "" {
+		panic("DYNAMODB_USERS cannot be empty")
+	}
 
-	// handler := Adapter(usersRepo, locationsRepo)
-	// lambda.Start(handler)
+	routesTable := os.Getenv("DYNAMODB_PICKING_ROUTES")
+	if routesTable == "" {
+		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
+	}
+
+	timezone := os.Getenv("TIMEZONE")
+	if timezone == "" {
+		panic("TIMEZONE cannot be empty")
+	}
+
+	session := session.New()
+	dynamodbClient := dynamodb.New(session)
+
+	timeHelper, err := internal.NewTimeHelper(timezone)
+	if err != nil {
+		panic(err)
+	}
+
+	usersRepo := repositories.NewDynamoDBUsersRepository(
+		dynamodbClient,
+		usersTable,
+	)
+	routesRepo := repositories.NewDynamoDBRoutesRepository(
+		dynamodbClient,
+		routesTable,
+		timeHelper,
+	)
+
+	handler := Adapter(usersRepo, routesRepo)
+	lambda.Start(handler)
+
 }
