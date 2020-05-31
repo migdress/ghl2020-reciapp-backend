@@ -11,8 +11,8 @@ import (
 )
 
 var ErrRouteNotFound = errors.New("route not found")
-
 var ErrRouteAlreadyAssigned = errors.New("route already assigned")
+var ErrPickingPointAlreadyPinned = errors.New("picking point already pinned")
 
 type TimeHelper interface {
 	ToISO8601(d time.Time) (string, error)

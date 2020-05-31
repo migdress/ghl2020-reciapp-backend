@@ -30,6 +30,7 @@ type Route struct {
 	Shift         string         `json:"shift"`
 	Materials     []string       `json:"materials"`
 	Active        bool           `json:"active"`
+	Status        string         `json:"status"`
 	GathererID    string         `json:"gatherer_id"`
 	StartsAt      *time.Time     `json:"starts_at"`
 	FinishedAt    *time.Time     `json:"finished_at"`
