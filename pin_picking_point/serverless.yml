@@ -1,9 +1,17 @@
-service: login
+service: pin-picking-point
 
 frameworkVersion: ">=1.28.0 <2.0.0"
 
+plugins:
+  - serverless-domain-manager
+
 custom:
   config: ${file(../config.${self:provider.stage}.yml):config}
+  customDomain:
+    active: true
+    stage: ${self:provider.stage}
+    domainName: pin-picking-point.reciapp.quartrino.com
+    createRoute53Record: true
 
 provider:
   name: aws
@@ -11,18 +19,26 @@ provider:
   region: us-east-1
   runtime: go1.x
   environment:
+    DYNAMODB_PICKING_ROUTES: ${self:custom.config.dynamodb_picking_routes}
     DYNAMODB_USERS: ${self:custom.config.dynamodb_users}
     DYNAMODB_LOCATIONS: ${self:custom.config.dynamodb_locations}
+    DYNAMODB_USER_LOCATIONS: ${self:custom.config.dynamodb_user_locations}
+    TIMEZONE: ${self:custom.config.timezone}
 
-    ##  iamRoleStatements:
-#    - Effect: Allow
-#      Action:
-#        - dynamodb:Query
-#      Resource:
-#        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}
-#        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}/index/*
-#        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_locations}
-#        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_locations}/index/*
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:UpdateItem
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_locations}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_locations}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_user_locations}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_user_locations}/index/*
 
 package:
   exclude:
@@ -35,5 +51,5 @@ functions:
     handler: bin/v1
     events:
       - http:
-          path: login
-          method: post
+          path: v1
+          method: put

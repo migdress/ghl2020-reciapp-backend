@@ -28,6 +28,29 @@ func NewDynamoDBLocationsRepository(client *dynamodb.DynamoDB, tableUserLocation
 	}
 }
 
+func (r *DynamoDBLocationsRespository) Find(id string) (models.Location, error) {
+	out, err := r.client.Query(&dynamodb.QueryInput{
+		TableName: aws.String(r.tableLocations),
+		KeyConditions: map[string]*dynamodb.Condition{
+			"id": {
+				ComparisonOperator: aws.String("EQ"),
+				AttributeValueList: []*dynamodb.AttributeValue{
+					{
+						S: aws.String(id),
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return models.Location{}, err
+	}
+	if len(out.Items) == 0 {
+		return models.Location{}, ErrLocationNotFound
+	}
+	return r.hydrateLocation(out.Items[0])
+}
+
 func (r *DynamoDBLocationsRespository) FindByUserID(id string) ([]models.Location, error) {
 	log.Printf("Finding user_locations by user id (%s)\n", id)
 	out, err := r.client.Query(&dynamodb.QueryInput{

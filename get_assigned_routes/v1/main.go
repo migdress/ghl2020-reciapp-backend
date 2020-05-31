@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
@@ -27,7 +26,6 @@ type RoutesRepoRepository interface {
 
 type ResponseRoutePickingPoint struct {
 	ID         string  `json:"id"`
-	Name       string  `json:"name"`
 	LocationID string  `json:"locationid"`
 	Country    string  `json:"country"`
 	City       string  `json:"city"`
@@ -72,7 +70,6 @@ func Adapter(routesRepo RoutesRepoRepository) Handler {
 			for j, pp := range route.PickingPoints {
 				responseRoutesPickingPoints[j] = ResponseRoutePickingPoint{
 					ID:         pp.ID,
-					Name:       pp.Name,
 					LocationID: pp.LocationID,
 					Country:    pp.Country,
 					City:       pp.City,
@@ -112,11 +109,6 @@ func main() {
 	hoursOffsetString := os.Getenv("HOURS_OFFSET")
 	if hoursOffsetString == "" {
 		panic("HOURS_OFFSET cannot be empty")
-	}
-
-	hoursOffset, err := strconv.Atoi(hoursOffsetString)
-	if err != nil {
-		panic("HOURS_OFFSET must be an integer")
 	}
 
 	timezone := os.Getenv("TIMEZONE")

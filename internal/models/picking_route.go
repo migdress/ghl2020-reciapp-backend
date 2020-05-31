@@ -24,6 +24,7 @@ type PickingPoint struct {
 	Longitude  float64    `json:"longitude"`
 	Address1   string     `json:"address1"`
 	Address2   string     `json:"address2"`
+	Materials  []string   `json:"materials"`
 	PickedAt   *time.Time `json:"picked"`
 	Created    *time.Time `json:"created"`
 }

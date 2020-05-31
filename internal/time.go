@@ -41,3 +41,15 @@ func (t *TimeHelper) NowWithTimezone() (time.Time, error) {
 	timezoned := time.Now().In(location)
 	return timezoned, nil
 }
+
+func (t *TimeHelper) NowWithTimezoneISO8601() (string, error) {
+	nowTimezoned, err := t.NowWithTimezone()
+	if err != nil {
+		return "", err
+	}
+	iso8601, err := t.ToISO8601(nowTimezoned)
+	if err != nil {
+		return "", err
+	}
+	return iso8601, nil
+}

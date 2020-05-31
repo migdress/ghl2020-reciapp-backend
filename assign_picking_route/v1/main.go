@@ -116,6 +116,8 @@ func main() {
 		panic(err)
 	}
 
+	uuidHelper := internal.NewUUIDHelper()
+
 	usersRepo := repositories.NewDynamoDBUsersRepository(
 		dynamodbClient,
 		usersTable,
@@ -124,6 +126,7 @@ func main() {
 		dynamodbClient,
 		routesTable,
 		timeHelper,
+		uuidHelper,
 	)
 
 	handler := Adapter(usersRepo, routesRepo)

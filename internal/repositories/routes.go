@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -19,23 +20,31 @@ var ErrPickingPointAlreadyPinned = errors.New("picking point already pinned")
 type TimeHelper interface {
 	ToISO8601(d time.Time) (string, error)
 	FromISO8601(d string) (time.Time, error)
+	NowWithTimezoneISO8601() (string, error)
+}
+
+type UUIDHelper interface {
+	New() string
 }
 
 type DynamoDBRoutesRepository struct {
 	client      *dynamodb.DynamoDB
 	tableRoutes string
 	timeHelper  TimeHelper
+	uuidHelper  UUIDHelper
 }
 
 func NewDynamoDBRoutesRepository(
 	client *dynamodb.DynamoDB,
 	tableRoutes string,
 	timeHelper TimeHelper,
+	uuidHelper UUIDHelper,
 ) *DynamoDBRoutesRepository {
 	return &DynamoDBRoutesRepository{
 		client:      client,
 		tableRoutes: tableRoutes,
 		timeHelper:  timeHelper,
+		uuidHelper:  uuidHelper,
 	}
 }
 
@@ -145,6 +154,109 @@ func (r *DynamoDBRoutesRepository) Assign(userID string, routeID string) error {
 	return nil
 }
 
+func (r *DynamoDBRoutesRepository) Pin(userID string, location models.Location, shiftID string, materials []string) error {
+	route, err := r.Find(shiftID)
+	if err != nil {
+		return err
+	}
+
+	route.PickingPoints = append(route.PickingPoints, models.PickingPoint{
+		ID:         r.uuidHelper.New(),
+		LocationID: location.ID,
+		Country:    location.Country,
+		City:       location.City,
+		Latitude:   location.Latitude,
+		Longitude:  location.Longitude,
+		Address1:   location.Address1,
+		Address2:   location.Address2,
+		Materials:  materials,
+	})
+	mapPickingPoints, err := r.hydratePickingPointsMap(route.PickingPoints)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.client.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName: aws.String(r.tableRoutes),
+		Key: map[string]*dynamodb.AttributeValue{
+			"id": {
+				S: aws.String(route.ID),
+			},
+		},
+		UpdateExpression: aws.String("set picking_points = :pickingPoints"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":pickingPoints": mapPickingPoints,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *DynamoDBRoutesRepository) hydratePickingPointsMap(pickingPoints []models.PickingPoint) (*dynamodb.AttributeValue, error) {
+	log.Printf("routes repo: hydratePickingPointsMap: hydrating (%v) pickingPointMaps\n", len(pickingPoints))
+	items := make([]*dynamodb.AttributeValue, len(pickingPoints))
+	for i, pickingPoint := range pickingPoints {
+		nowString, err := r.timeHelper.NowWithTimezoneISO8601()
+		if err != nil {
+			return nil, err
+		}
+		items[i] = &dynamodb.AttributeValue{
+			M: map[string]*dynamodb.AttributeValue{
+				"id": {
+					S: aws.String(pickingPoint.ID),
+				},
+				"location_id": {
+					S: aws.String(pickingPoint.LocationID),
+				},
+				"country": {
+					S: aws.String(pickingPoint.Country),
+				},
+				"city": {
+					S: aws.String(pickingPoint.City),
+				},
+				"latitude": {
+					N: aws.String(fmt.Sprintf("%f", pickingPoint.Latitude)),
+				},
+				"longitude": {
+					N: aws.String(fmt.Sprintf("%f", pickingPoint.Longitude)),
+				},
+				"address_1": {
+					S: aws.String(pickingPoint.Address1),
+				},
+				"materials": {
+					L: r.hydratePickingPointMaterials(pickingPoint.Materials),
+				},
+				"address_2": {
+					S: aws.String(pickingPoint.Address2),
+				},
+				"picked_at": {
+					S: aws.String("-"),
+				},
+				"created": {
+					S: aws.String(nowString),
+				},
+			},
+		}
+	}
+	return &dynamodb.AttributeValue{
+		L: items,
+	}, nil
+}
+
+func (r *DynamoDBRoutesRepository) hydratePickingPointMaterials(materials []string) []*dynamodb.AttributeValue {
+	log.Printf("routes repo: hydratePickingPointMaterials: hydrating (%v) pickingPointMaterials\n", len(materials))
+	items := make([]*dynamodb.AttributeValue, len(materials))
+	for i, material := range materials {
+		items[i] = &dynamodb.AttributeValue{
+			S: aws.String(material),
+		}
+	}
+	return items
+}
+
 func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.AttributeValue) ([]models.Route, error) {
 	routes := make([]models.Route, len(items))
 	for i, item := range items {
@@ -191,7 +303,7 @@ func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.At
 			if err != nil {
 				return nil, err
 			}
-			route.FinishedAt = &parsedTime
+			route.Created = &parsedTime
 		}
 		if v, ok := item["picking_points"]; ok {
 			pickingPoints, err := r.hydratePickingPoints(v.L)
@@ -214,17 +326,14 @@ func (r *DynamoDBRoutesRepository) hydratePickingPoints(
 		if v, ok := item.M["id"]; ok {
 			pp.ID = *v.S
 		}
-		if v, ok := item.M["name"]; ok {
-			pp.ID = *v.S
-		}
 		if v, ok := item.M["location_id"]; ok {
-			pp.ID = *v.S
+			pp.LocationID = *v.S
 		}
 		if v, ok := item.M["country"]; ok {
-			pp.ID = *v.S
+			pp.Country = *v.S
 		}
 		if v, ok := item.M["city"]; ok {
-			pp.ID = *v.S
+			pp.City = *v.S
 		}
 		if v, ok := item.M["latitude"]; ok {
 			floatVal, err := strconv.ParseFloat(*v.N, 64)
@@ -241,10 +350,10 @@ func (r *DynamoDBRoutesRepository) hydratePickingPoints(
 			pp.Longitude = floatVal
 		}
 		if v, ok := item.M["address_1"]; ok {
-			pp.ID = *v.S
+			pp.Address1 = *v.S
 		}
 		if v, ok := item.M["address_2"]; ok {
-			pp.ID = *v.S
+			pp.Address2 = *v.S
 		}
 		if v, ok := item.M["picked_at"]; ok && *v.S != "-" {
 			timeVal, err := r.timeHelper.FromISO8601(*v.S)
@@ -258,7 +367,7 @@ func (r *DynamoDBRoutesRepository) hydratePickingPoints(
 			if err != nil {
 				return nil, err
 			}
-			pp.PickedAt = &timeVal
+			pp.Created = &timeVal
 		}
 		pickingPoints[i] = pp
 	}

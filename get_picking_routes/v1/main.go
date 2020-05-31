@@ -151,6 +151,8 @@ func main() {
 		panic(err)
 	}
 
+	uuidHelper := internal.NewUUIDHelper()
+
 	session := session.New()
 	dynamodbClient := dynamodb.New(session)
 
@@ -158,6 +160,7 @@ func main() {
 		dynamodbClient,
 		routesTable,
 		timeHelper,
+		uuidHelper,
 	)
 	handler := Adapter(routesRepo, hoursOffset, timeHelper)
 	lambda.Start(handler)
