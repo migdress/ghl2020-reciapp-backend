@@ -12,6 +12,8 @@ import (
 
 var ErrNoLocationsFound = errors.New("no_locations_found")
 
+var ErrLocationNotFound = errors.New("location_not_found")
+
 type DynamoDBLocationsRespository struct {
 	client             *dynamodb.DynamoDB
 	tableUserLocations string
