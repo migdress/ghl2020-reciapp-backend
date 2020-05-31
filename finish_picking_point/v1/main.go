@@ -173,11 +173,16 @@ func Adapter(
 		if err != nil {
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
+
+		status := route.Status
+		if remaining == 1 {
+			status = models.RouteStatusFinished
+		}
 		responseAssignedRoute := ResponseAssignedRoute{
 			ID:            route.ID,
 			Materials:     route.Materials,
 			Sector:        route.Sector,
-			Status:        route.Status,
+			Status:        status,
 			Shift:         route.Shift,
 			Date:          startsAt,
 			PickingPoints: responseRoutePickingPoints,
