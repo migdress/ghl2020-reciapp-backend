@@ -4,25 +4,39 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/repositories"
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-var ErrUsernameEmpty = errors.New("username cannot be empty")
+var ErrUserIDEmpty = errors.New("user_id cannot be empty")
 var ErrRouteIDEmpty = errors.New("route_id  cannot be empty")
+var ErrWrongGathererID = errors.New("this route is assigned to another gatherer")
+var ErrWrongUserType = errors.New("user must be of type gatherer")
 
 type Handler func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
 
 type UsersRepository interface {
-	FindByUsername(userID string) (models.User, error)
+	Find(userID string) (models.User, error)
 }
 
 type RouteRepository interface {
-	FindByRoute(routeID string) (models.Route, error)
+	Find(routeID string) (models.Route, error)
+	Initiate(routeID string) error
+}
+
+type TimeHelper interface {
+	ToLatamFormat(d time.Time) (string, error)
+	ToISO8601(d time.Time) (string, error)
 }
 
 type Request struct {
@@ -31,17 +45,18 @@ type Request struct {
 }
 
 type ResponsePickingPoint struct {
-	Country    string  `json:"country"`
-	City       string  `json:"city"`
-	Address1   string  `json:"address_1"`
-	Address2   string  `json:"address_2"`
-	LocationID string  `json:"location_id"`
-	Name       string  `json:"name"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
+	Country    string   `json:"country"`
+	City       string   `json:"city"`
+	Address1   string   `json:"address_1"`
+	Address2   string   `json:"address_2"`
+	LocationID string   `json:"location_id"`
+	Name       string   `json:"name"`
+	Latitude   float64  `json:"latitude"`
+	Longitude  float64  `json:"longitude"`
+	Materials  []string `json:"materials"`
 }
 
-type ResponseAssignedRoute struct {
+type ResponseRoute struct {
 	ID            string                 `json:"id"`
 	Materials     []string               `json:"materials"`
 	Sector        string                 `json:"sector"`
@@ -51,7 +66,15 @@ type ResponseAssignedRoute struct {
 	PickingPoints []ResponsePickingPoint `json:"picking_points"`
 }
 
-func Adapter(usersRepo UsersRepository, routeRepo RouteRepository) Handler {
+type Response struct {
+	AssignedRoute ResponseRoute `json:"assigned_route"`
+}
+
+func Adapter(
+	usersRepo UsersRepository,
+	routeRepo RouteRepository,
+	timeHelper TimeHelper,
+) Handler {
 	return func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 		reqBody := Request{}
@@ -61,26 +84,44 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository) Handler {
 		}
 
 		if reqBody.UserID == "" {
-			return internal.Error(http.StatusBadRequest, ErrUsernameEmpty), nil
+			return internal.Error(http.StatusBadRequest, ErrUserIDEmpty), nil
 		}
 		if reqBody.RouteID == "" {
 			return internal.Error(http.StatusBadRequest, ErrRouteIDEmpty), nil
 		}
 
-		_, err = usersRepo.FindByUsername(reqBody.UserID)
+		user, err := usersRepo.Find(reqBody.UserID)
 		if err != nil {
 			if err == repositories.ErrUserNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
 			}
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
-		route, err := routeRepo.FindByRoute(reqBody.RouteID)
+
+		route, err := routeRepo.Find(reqBody.RouteID)
 		if err != nil {
 			if err == repositories.ErrRouteNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
 			}
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
+
+		if user.Type != models.UserTypeGatherer {
+			return internal.Error(http.StatusForbidden, ErrWrongUserType), nil
+		}
+		if route.GathererID != user.ID {
+			return internal.Error(http.StatusForbidden, ErrWrongGathererID), nil
+		}
+
+		log.Printf("route.InitiatedAt: (%v)\n", route.InitiatedAt)
+		if route.InitiatedAt == nil {
+			log.Printf("Initiating route\n")
+			err := routeRepo.Initiate(route.ID)
+			if err != nil {
+				return internal.Error(http.StatusInternalServerError, err), nil
+			}
+		}
+
 		responseRoutePickingPoints := make([]ResponsePickingPoint, len(route.PickingPoints))
 		for i, pp := range route.PickingPoints {
 			responseRoutePickingPoints[i] = ResponsePickingPoint{
@@ -91,19 +132,28 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository) Handler {
 				LocationID: pp.LocationID,
 				Latitude:   pp.Latitude,
 				Longitude:  pp.Longitude,
+				Materials:  pp.Materials,
 			}
 		}
-		responseAssignedRoute := ResponseAssignedRoute{
-			ID:        route.ID,
-			Materials: route.Materials,
-			Sector:    route.Sector,
-			Status:    route.Status,
-			Shift:     route.Shift,
-			//Date:          route.Date,
+
+		startsAt, err := timeHelper.ToISO8601(*route.StartsAt)
+		if err != nil {
+			return internal.Error(http.StatusInternalServerError, err), nil
+		}
+		responseAssignedRoute := ResponseRoute{
+			ID:            route.ID,
+			Materials:     route.Materials,
+			Sector:        route.Sector,
+			Status:        route.Status,
+			Shift:         route.Shift,
+			Date:          startsAt,
 			PickingPoints: responseRoutePickingPoints,
 		}
 
-		jsonResponse, err := json.Marshal(responseAssignedRoute)
+		response := Response{
+			AssignedRoute: responseAssignedRoute,
+		}
+		jsonResponse, err := json.Marshal(response)
 		if err != nil {
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
@@ -113,33 +163,41 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository) Handler {
 }
 
 func main() {
-	/*
-		usersTable := os.Getenv("DYNAMODB_USERS")
-		if usersTable == "" {
-			panic("DYNAMODB_USERS cannot be empty")
-		}
-		locationsTable := os.Getenv("DYNAMODB_LOCATIONS")
-		if locationsTable == "" {
-			panic("DYNAMODB_LOCATIONS cannot be empty")
-		}
-		userLocationsTable := os.Getenv("DYNAMODB_USER_LOCATIONS")
-		if userLocationsTable == "" {
-			panic("DYNAMODB_USER_LOCATIONS cannot be empty")
-		}
+	usersTable := os.Getenv("DYNAMODB_USERS")
+	if usersTable == "" {
+		panic("DYNAMODB_USERS cannot be empty")
+	}
 
-		session := session.New()
-		dynamodbClient := dynamodb.New(session)
-		usersRepo := repositories.NewDynamoDBUsersRepository(
-			dynamodbClient,
-			usersTable,
-		)
-		locationsRepo := repositories.NewDynamoDBLocationsRepository(
-			dynamodbClient,
-			userLocationsTable,
-			locationsTable,
-		)
+	routesTable := os.Getenv("DYNAMODB_PICKING_ROUTES")
+	if routesTable == "" {
+		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
+	}
 
-		handler := Adapter(usersRepo, locationsRepo)
-		lambda.Start(handler)
-	*/
+	timezone := os.Getenv("TIMEZONE")
+	if timezone == "" {
+		panic("TIMEZONE cannot be empty")
+	}
+
+	timeHelper, err := internal.NewTimeHelper(timezone)
+	if err != nil {
+		panic(err)
+	}
+
+	uuidHelper := internal.NewUUIDHelper()
+
+	session := session.New()
+	dynamodbClient := dynamodb.New(session)
+	usersRepo := repositories.NewDynamoDBUsersRepository(
+		dynamodbClient,
+		usersTable,
+	)
+	routesRepo := repositories.NewDynamoDBRoutesRepository(
+		dynamodbClient,
+		routesTable,
+		timeHelper,
+		uuidHelper,
+	)
+
+	handler := Adapter(usersRepo, routesRepo, timeHelper)
+	lambda.Start(handler)
 }

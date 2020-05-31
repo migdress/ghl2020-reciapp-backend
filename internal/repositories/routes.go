@@ -78,6 +78,37 @@ func (r *DynamoDBRoutesRepository) Find(routeID string) (models.Route, error) {
 	return routes[0], nil
 }
 
+func (r *DynamoDBRoutesRepository) Initiate(routeID string) error {
+	log.Printf("routesRepo: Initiating route..")
+	nowString, err := r.timeHelper.NowWithTimezoneISO8601()
+	if err != nil {
+		return err
+	}
+
+	_, err = r.client.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName: aws.String(r.tableRoutes),
+		Key: map[string]*dynamodb.AttributeValue{
+			"id": {
+				S: aws.String(routeID),
+			},
+		},
+		UpdateExpression: aws.String("set initiated_at = :now, #status = :initiated"),
+		ExpressionAttributeNames: map[string]*string{
+			"#status": aws.String("status"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":now": {
+				S: aws.String(nowString),
+			},
+			":initiated": {
+				S: aws.String(models.RouteStatusInitiated),
+			},
+		},
+	})
+
+	return err
+}
+
 func (r *DynamoDBRoutesRepository) GetAssignedRoutesbyUserID(userID string) ([]models.Route, error) {
 	out, err := r.client.Query(&dynamodb.QueryInput{
 		TableName:              aws.String(r.tableRoutes),
@@ -371,6 +402,13 @@ func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.At
 				return nil, err
 			}
 			route.FinishedAt = &parsedTime
+		}
+		if v, ok := item["initiated_at"]; ok && *v.S != "-" {
+			parsedTime, err := r.timeHelper.FromISO8601(*v.S)
+			if err != nil {
+				return nil, err
+			}
+			route.InitiatedAt = &parsedTime
 		}
 		if v, ok := item["created"]; ok && *v.S != "-" {
 			parsedTime, err := r.timeHelper.FromISO8601(*v.S)

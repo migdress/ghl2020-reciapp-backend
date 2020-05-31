@@ -12,6 +12,7 @@ const (
 	RouteStatusOpen      = "open"      // Shows up to the user
 	RouteStatusClosed    = "closed"    // Shows up to the gatherer
 	RouteStatusAssigned  = "assigned"  // Shows up only to the assigned gatherer
+	RouteStatusInitiated = "initiated" // Shows up only to the assigned gatherer when it's been initiated
 	RouteStatusFinished  = "finished"  // Gathere has finished all the picking points
 	RouteStatusCancelled = "cancelled" // to be defined
 )
@@ -38,6 +39,7 @@ type Route struct {
 	Status        string         `json:"status"`
 	GathererID    string         `json:"gatherer_id"`
 	StartsAt      *time.Time     `json:"starts_at"`
+	InitiatedAt   *time.Time     `json:"initiated_at"`
 	FinishedAt    *time.Time     `json:"finished_at"`
 	Created       *time.Time     `json:"created"`
 	PickingPoints []PickingPoint `json:"picking_points"`
