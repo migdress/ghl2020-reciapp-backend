@@ -9,10 +9,11 @@ const (
 	MaterialPaper      = "paper"
 	MaterialTechnology = "technology"
 
-	RouteStatusOpen      = "open"
-	RouteStatusClosed    = "closed"
-	RouteStatusFinished  = "finished"
-	RouteStatusCancelled = "finished"
+	RouteStatusOpen      = "open"      // Shows up to the user
+	RouteStatusClosed    = "closed"    // Shows up to the gatherer
+	RouteStatusAssigned  = "assigned"  // Shows up only to the assigned gatherer
+	RouteStatusFinished  = "finished"  // Gathere has finished all the picking points
+	RouteStatusCancelled = "cancelled" // to be defined
 )
 
 type PickingPoint struct {

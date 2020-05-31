@@ -48,6 +48,7 @@ type ResponseRoute struct {
 	ID            string   `json:"id"`
 	Materials     []string `json:"materials"`
 	Sector        string   `json:"sector"`
+	Status        string   `json:"status"`
 	Shift         string   `json:"shift"`
 	Date          string   `json:"date"`
 	PickingPoints []ResponseRoutePickingPoint
@@ -109,6 +110,7 @@ func Adapter(
 				Materials:     route.Materials,
 				Sector:        route.Sector,
 				Shift:         route.Shift,
+				Status:        route.Status,
 				Date:          startsAt,
 				PickingPoints: responseRoutesPickingPoints,
 			}
