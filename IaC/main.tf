@@ -128,7 +128,7 @@ resource "aws_dynamodb_table" "PickingRoute-dynamodb-table" {
 
   attribute {
     name = "status"
-    type = "N"
+    type = "S"
   }
 
   attribute {
