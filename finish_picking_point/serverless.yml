@@ -20,6 +20,7 @@ provider:
   runtime: go1.x
   environment:
     DYNAMODB_USERS: ${self:custom.config.dynamodb_users}
+    DYNAMODB_LOCATIONS: ${self:custom.config.dynamodb_locations}
     DYNAMODB_PICKING_ROUTES: ${self:custom.config.dynamodb_picking_routes}
     TIMEZONE: ${self:custom.config.timezone}
 
@@ -33,6 +34,8 @@ provider:
         - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_users}/index/*
         - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}
         - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_locations}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_locations}/index/*
 
 package:
   exclude:

@@ -43,8 +43,8 @@ type ResponseRoutePickingPoint struct {
 	City       string   `json:"city"`
 	Latitude   float64  `json:"latitude"`
 	Longitude  float64  `json:"longitude"`
-	Address1   string   `json:"address1"`
-	Address2   string   `json:"address2"`
+	Address1   string   `json:"address_1"`
+	Address2   string   `json:"address_2"`
 	Materials  []string `json:"materials"`
 }
 
@@ -150,6 +150,11 @@ func main() {
 		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
 	}
 
+	locationsTable := os.Getenv("DYNAMODB_LOCATIONS")
+	if locationsTable == "" {
+		panic("DYNAMODB_LOCATIONS cannot be empty")
+	}
+
 	usersTable := os.Getenv("DYNAMODB_USERS")
 	if usersTable == "" {
 		panic("DYNAMODB_USERS cannot be empty")
@@ -177,6 +182,7 @@ func main() {
 	routesRepo := repositories.NewDynamoDBRoutesRepository(
 		dynamodbClient,
 		routesTable,
+		locationsTable,
 		timeHelper,
 		uuidHelper,
 	)

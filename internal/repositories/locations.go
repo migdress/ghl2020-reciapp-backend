@@ -51,6 +51,18 @@ func (r *DynamoDBLocationsRespository) Find(id string) (models.Location, error) 
 	return r.hydrateLocation(out.Items[0])
 }
 
+func (r *DynamoDBLocationsRespository) GetScoreByUserID(userID string) (int, error) {
+	locations, err := r.FindByUserID(userID)
+	if err != nil {
+		return 0, err
+	}
+	score := 0
+	for _, l := range locations {
+		score += int(l.Balance)
+	}
+	return score, nil
+}
+
 func (r *DynamoDBLocationsRespository) FindByUserID(id string) ([]models.Location, error) {
 	log.Printf("Finding user_locations by user id (%s)\n", id)
 	out, err := r.client.Query(&dynamodb.QueryInput{

@@ -181,6 +181,7 @@ func main() {
 	routesRepo := repositories.NewDynamoDBRoutesRepository(
 		dynamodbClient,
 		routesTable,
+		locationsTable,
 		timeHelper,
 		uuidHelper,
 	)

@@ -33,7 +33,7 @@ type UsersRepository interface {
 
 type RoutesRepository interface {
 	Find(routeID string) (models.Route, error)
-	FinishPickingPoint(routeID string, pickingPointIndex int, remaining int) error
+	FinishPickingPoint(routeID string, pickingPointIndex int, locationID string, remaining int) error
 }
 
 type TimeHelper interface {
@@ -49,24 +49,24 @@ type Request struct {
 
 type ResponsePickingPoint struct {
 	ID         string   `json:"id"`
-	LocationID string   `json:"locationid"`
+	LocationID string   `json:"location_id"`
 	Country    string   `json:"country"`
 	City       string   `json:"city"`
 	Latitude   float64  `json:"latitude"`
 	Longitude  float64  `json:"longitude"`
-	Address1   string   `json:"address1"`
-	Address2   string   `json:"address2"`
+	Address1   string   `json:"address_1"`
+	Address2   string   `json:"address_2"`
 	Materials  []string `json:"materials"`
 }
 
 type ResponseAssignedRoute struct {
-	ID            string   `json:"id"`
-	Materials     []string `json:"materials"`
-	Sector        string   `json:"sector"`
-	Status        string   `json:"status"`
-	Shift         string   `json:"shift"`
-	Date          string   `json:"date"`
-	PickingPoints []ResponsePickingPoint
+	ID            string                 `json:"id"`
+	Materials     []string               `json:"materials"`
+	Sector        string                 `json:"sector"`
+	Status        string                 `json:"status"`
+	Shift         string                 `json:"shift"`
+	Date          string                 `json:"date"`
+	PickingPoints []ResponsePickingPoint `json:"picking_points"`
 }
 
 func Adapter(
@@ -119,6 +119,7 @@ func Adapter(
 		exists := false
 		alreadyPicked := false
 		pickingPointIndex := -1
+		locationID := ""
 		now := time.Now()
 		remaining := len(route.PickingPoints)
 		log.Printf("looping through (%v) picking points\n", len(route.PickingPoints))
@@ -131,6 +132,7 @@ func Adapter(
 				log.Printf("found match! current index is (%v)\n", i)
 				exists = true
 				pickingPointIndex = i
+				locationID = pp.LocationID
 
 				if pp.PickedAt != nil {
 					alreadyPicked = true
@@ -145,7 +147,7 @@ func Adapter(
 		}
 
 		if !alreadyPicked {
-			err = routesRepo.FinishPickingPoint(route.ID, pickingPointIndex, remaining)
+			err = routesRepo.FinishPickingPoint(route.ID, pickingPointIndex, locationID, remaining)
 			if err != nil {
 				return internal.Error(http.StatusInternalServerError, err), nil
 			}
@@ -206,6 +208,11 @@ func main() {
 		panic("TIMEZONE cannot be empty")
 	}
 
+	locationsTable := os.Getenv("DYNAMODB_LOCATIONS")
+	if locationsTable == "" {
+		panic("DYNAMODB_LOCATIONS cannot be empty")
+	}
+
 	timeHelper, err := internal.NewTimeHelper(timezone)
 	if err != nil {
 		panic(err)
@@ -223,6 +230,7 @@ func main() {
 	routesRepo := repositories.NewDynamoDBRoutesRepository(
 		dynamodbClient,
 		routesTable,
+		locationsTable,
 		timeHelper,
 		uuidHelper,
 	)

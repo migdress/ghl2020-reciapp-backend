@@ -30,23 +30,26 @@ type UUIDHelper interface {
 }
 
 type DynamoDBRoutesRepository struct {
-	client      *dynamodb.DynamoDB
-	tableRoutes string
-	timeHelper  TimeHelper
-	uuidHelper  UUIDHelper
+	client         *dynamodb.DynamoDB
+	tableRoutes    string
+	tableLocations string
+	timeHelper     TimeHelper
+	uuidHelper     UUIDHelper
 }
 
 func NewDynamoDBRoutesRepository(
 	client *dynamodb.DynamoDB,
 	tableRoutes string,
+	tableLocations string,
 	timeHelper TimeHelper,
 	uuidHelper UUIDHelper,
 ) *DynamoDBRoutesRepository {
 	return &DynamoDBRoutesRepository{
-		client:      client,
-		tableRoutes: tableRoutes,
-		timeHelper:  timeHelper,
-		uuidHelper:  uuidHelper,
+		client:         client,
+		tableRoutes:    tableRoutes,
+		tableLocations: tableLocations,
+		timeHelper:     timeHelper,
+		uuidHelper:     uuidHelper,
 	}
 }
 
@@ -109,52 +112,100 @@ func (r *DynamoDBRoutesRepository) Initiate(routeID string) error {
 	return err
 }
 
-func (r *DynamoDBRoutesRepository) FinishPickingPoint(routeID string, pickingPointIndex int, remaining int) error {
+func (r *DynamoDBRoutesRepository) FinishPickingPoint(routeID string, pickingPointIndex int, locationID string, remaining int) error {
 	nowString, err := r.timeHelper.NowWithTimezoneISO8601()
 	if err != nil {
 		return err
 	}
 
 	if remaining == 1 {
-		_, err = r.client.UpdateItem(&dynamodb.UpdateItemInput{
-			TableName: aws.String(r.tableRoutes),
-			Key: map[string]*dynamodb.AttributeValue{
-				"id": {
-					S: aws.String(routeID),
+		_, err = r.client.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+			TransactItems: []*dynamodb.TransactWriteItem{
+				{
+					Update: &dynamodb.Update{
+						TableName: aws.String(r.tableRoutes),
+						Key: map[string]*dynamodb.AttributeValue{
+							"id": {
+								S: aws.String(routeID),
+							},
+						},
+						UpdateExpression: aws.String(
+							fmt.Sprintf(`
+								set picking_points[%v].picked_at = :now, 
+								#status = :finished, 
+								finished_at = :now`,
+								pickingPointIndex,
+							),
+						),
+						ExpressionAttributeNames: map[string]*string{
+							"#status": aws.String("status"),
+						},
+						ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+							":now": {
+								S: aws.String(nowString),
+							},
+							":finished": {
+								S: aws.String(models.RouteStatusFinished),
+							},
+						},
+					},
 				},
-			},
-			UpdateExpression: aws.String(
-				fmt.Sprintf(`
-				set picking_points[%v].picked_at = :now, 
-				#status = :finished, 
-				finished_at = :now`, pickingPointIndex),
-			),
-			ExpressionAttributeNames: map[string]*string{
-				"#status": aws.String("status"),
-			},
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":now": {
-					S: aws.String(nowString),
-				},
-				":finished": {
-					S: aws.String(models.RouteStatusFinished),
+				{
+					Update: &dynamodb.Update{
+						TableName: aws.String(r.tableLocations),
+						Key: map[string]*dynamodb.AttributeValue{
+							"id": {
+								S: aws.String(locationID),
+							},
+						},
+						UpdateExpression: aws.String("set balance = balance + :score"),
+						ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+							":score": {
+								N: aws.String("10"),
+							},
+						},
+					},
 				},
 			},
 		})
 	} else {
-		_, err = r.client.UpdateItem(&dynamodb.UpdateItemInput{
-			TableName: aws.String(r.tableRoutes),
-			Key: map[string]*dynamodb.AttributeValue{
-				"id": {
-					S: aws.String(routeID),
+		_, err = r.client.TransactWriteItems(&dynamodb.TransactWriteItemsInput{
+			TransactItems: []*dynamodb.TransactWriteItem{
+				{
+					Update: &dynamodb.Update{
+						TableName: aws.String(r.tableRoutes),
+						Key: map[string]*dynamodb.AttributeValue{
+							"id": {
+								S: aws.String(routeID),
+							},
+						},
+						UpdateExpression: aws.String(
+							fmt.Sprintf(`set picking_points[%v].picked_at = :now`,
+								pickingPointIndex,
+							),
+						),
+						ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+							":now": {
+								S: aws.String(nowString),
+							},
+						},
+					},
 				},
-			},
-			UpdateExpression: aws.String(
-				fmt.Sprintf(`set picking_points[%v].picked_at = :now`, pickingPointIndex),
-			),
-			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-				":now": {
-					S: aws.String(nowString),
+				{
+					Update: &dynamodb.Update{
+						TableName: aws.String(r.tableLocations),
+						Key: map[string]*dynamodb.AttributeValue{
+							"id": {
+								S: aws.String(locationID),
+							},
+						},
+						UpdateExpression: aws.String("set balance = balance + :score"),
+						ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+							":score": {
+								N: aws.String("10"),
+							},
+						},
+					},
 				},
 			},
 		})

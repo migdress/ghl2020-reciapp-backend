@@ -113,6 +113,11 @@ func main() {
 		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
 	}
 
+	locationsTable := os.Getenv("DYNAMODB_LOCATIONS")
+	if locationsTable == "" {
+		panic("DYNAMODB_LOCATIONS cannot be empty")
+	}
+
 	daysOffsetString := os.Getenv("DAYS_OFFSET")
 	if daysOffsetString == "" {
 		panic("DAYS_OFFSET cannot be empty")
@@ -141,6 +146,7 @@ func main() {
 	routesRepo := repositories.NewDynamoDBRoutesRepository(
 		dynamodbClient,
 		routesTable,
+		locationsTable,
 		timeHelper,
 		uuidHelper,
 	)

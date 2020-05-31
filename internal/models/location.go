@@ -8,6 +8,7 @@ type Location struct {
 	Country   string  `json:"country"`
 	City      string  `json:"city"`
 	State     string  `json:"state"`
+	Score     int     `json:"score"`
 	Address1  string  `json:"address1"`
 	Address2  string  `json:"address2"`
 	Latitude  float64 `json:"latitude"`
