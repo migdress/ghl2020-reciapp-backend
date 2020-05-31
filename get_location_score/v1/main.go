@@ -17,28 +17,31 @@ var ErrUserIDNotFound = errors.New("user_id not found")
 
 type Handler func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
 
-type UserScoreRepository interface {
-	GetUserScorebyUserID(userID string) (models.User, error)
+type UsersRepository interface {
+	GetScoreByUserID(userID string) (models.User, error)
 }
 
-type ScoreResponse struct {
+type LocationsRepository interface {
+	GetScoreByUserID(userID string) (models.User, error)
+}
+
+type Response struct {
 	Username string `json:"username"`
 	Score    int    `json:"score"`
 }
 
-func Adapter(userRepo UserScoreRepository) Handler {
+func Adapter(locationsRepo LocationsRepository) Handler {
 	return func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
-		usertID := req.PathParameters["user_id"]
-
-		if usertID == "" {
+		userID := req.PathParameters["user_id"]
+		if userID == "" {
 			return internal.Error(http.StatusBadRequest, ErrUserIDEmpty), nil
 		}
 
-		user, err := userRepo.GetUserScorebyUserID(usertID)
+		score, err := locationsRepo.GetScoreByUserID(userID)
 		if err != nil {
-			if err == repositories.ErrUserNotFound {
-				return internal.Error(http.StatusNotFound, err), nil
+			if err == repositories.ErrNoLocationsFound {
+				return internal.Respond(http.StatusNotFound, err), nil
 			}
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}

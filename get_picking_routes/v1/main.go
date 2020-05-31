@@ -36,7 +36,7 @@ type TimeHelper interface {
 type ResponseRoutePickingPoint struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
-	LocationID string   `json:"locationid"`
+	LocationID string   `json:"location_id"`
 	Country    string   `json:"country"`
 	City       string   `json:"city"`
 	Latitude   float64  `json:"latitude"`
