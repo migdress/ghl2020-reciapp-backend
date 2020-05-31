@@ -31,20 +31,24 @@ type Request struct {
 }
 
 type ResponsePickingPoint struct {
-	LocationID string  `json:"locationid"`
+	Country    string  `json:"country"`
+	City       string  `json:"city"`
+	Address1   string  `json:"address_1"`
+	Address2   string  `json:"address_2"`
+	LocationID string  `json:"location_id"`
 	Name       string  `json:"name"`
 	Latitude   float64 `json:"latitude"`
 	Longitude  float64 `json:"longitude"`
 }
 
 type ResponseAssignedRoute struct {
-	ID            string   `json:"id"`
-	Materials     []string `json:"id"`
-	Sector        string   `json:"id"`
-	Status        string   `json:"id"`
-	Shift         string   `json:"id"`
-	Date          string   `json:"id"`
-	PickingPoints []ResponsePickingPoint
+	ID            string                 `json:"id"`
+	Materials     []string               `json:"materials"`
+	Sector        string                 `json:"sector"`
+	Status        string                 `json:"status"`
+	Shift         string                 `json:"shift"`
+	Date          string                 `json:"date"`
+	PickingPoints []ResponsePickingPoint `json:"picking_points"`
 }
 
 func Adapter(usersRepo UsersRepository, routeRepo RouteRepository) Handler {
@@ -80,8 +84,11 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository) Handler {
 		responseRoutePickingPoints := make([]ResponsePickingPoint, len(route.PickingPoints))
 		for i, pp := range route.PickingPoints {
 			responseRoutePickingPoints[i] = ResponsePickingPoint{
+				Country:    pp.Country,
+				City:       pp.City,
+				Address1:   pp.Address1,
+				Address2:   pp.Address2,
 				LocationID: pp.LocationID,
-				Name:       pp.Name,
 				Latitude:   pp.Latitude,
 				Longitude:  pp.Longitude,
 			}

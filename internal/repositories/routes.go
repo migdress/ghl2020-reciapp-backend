@@ -53,12 +53,15 @@ func (r *DynamoDBRoutesRepository) FindAvailableRoutes(
 
 	out, err := r.client.Query(&dynamodb.QueryInput{
 		TableName:              aws.String(r.tableRoutes),
-		IndexName:              aws.String("by_active_and_starts_at"),
-		KeyConditionExpression: aws.String("active = :active AND starts_at BETWEEN :now AND :then"),
+		IndexName:              aws.String("by_status_and_starts_at"),
+		KeyConditionExpression: aws.String("#status = :closed AND starts_at BETWEEN :now AND :then"),
 		FilterExpression:       aws.String("gatherer_id = :unassigned"),
+		ExpressionAttributeNames: map[string]*string{
+			"#status": aws.String("status"),
+		},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":active": {
-				N: aws.String("1"),
+			":closed": {
+				S: aws.String(models.RouteStatusClosed),
 			},
 			":now": {
 				S: aws.String(nowString),
@@ -79,7 +82,7 @@ func (r *DynamoDBRoutesRepository) FindAvailableRoutes(
 
 func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.AttributeValue) ([]models.Route, error) {
 	routes := make([]models.Route, len(items))
-	for _, item := range items {
+	for i, item := range items {
 
 		route := models.Route{}
 		if v, ok := item["id"]; ok {
@@ -98,12 +101,8 @@ func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.At
 			}
 			route.Materials = materials
 		}
-		if v, ok := item["active"]; ok {
-			boolVal, err := strconv.ParseBool(*v.N)
-			if err != nil {
-				return nil, err
-			}
-			route.Active = boolVal
+		if v, ok := item["status"]; ok {
+			route.Status = *v.S
 		}
 		if v, ok := item["starts_at"]; ok {
 			parsedTime, err := r.timeHelper.FromISO8601(*v.S)
@@ -126,13 +125,14 @@ func (r *DynamoDBRoutesRepository) hydrateRoutes(items []map[string]*dynamodb.At
 			}
 			route.FinishedAt = &parsedTime
 		}
-		if v, ok := item["picking_points"]; ok && *v.S != "-" {
+		if v, ok := item["picking_points"]; ok {
 			pickingPoints, err := r.hydratePickingPoints(v.L)
 			if err != nil {
 				return nil, err
 			}
 			route.PickingPoints = pickingPoints
 		}
+		routes[i] = route
 	}
 	return routes, nil
 }
@@ -159,14 +159,14 @@ func (r *DynamoDBRoutesRepository) hydratePickingPoints(
 			pp.ID = *v.S
 		}
 		if v, ok := item.M["latitude"]; ok {
-			floatVal, err := strconv.ParseFloat(*v.S, 64)
+			floatVal, err := strconv.ParseFloat(*v.N, 64)
 			if err != nil {
 				return nil, err
 			}
 			pp.Latitude = floatVal
 		}
 		if v, ok := item.M["longitude"]; ok {
-			floatVal, err := strconv.ParseFloat(*v.S, 64)
+			floatVal, err := strconv.ParseFloat(*v.N, 64)
 			if err != nil {
 				return nil, err
 			}
@@ -178,14 +178,14 @@ func (r *DynamoDBRoutesRepository) hydratePickingPoints(
 		if v, ok := item.M["address_2"]; ok {
 			pp.ID = *v.S
 		}
-		if v, ok := item.M["picked_at"]; ok {
+		if v, ok := item.M["picked_at"]; ok && *v.S != "-" {
 			timeVal, err := r.timeHelper.FromISO8601(*v.S)
 			if err != nil {
 				return nil, err
 			}
 			pp.PickedAt = &timeVal
 		}
-		if v, ok := item.M["created"]; ok {
+		if v, ok := item.M["created"]; ok && *v.S != "-" {
 			timeVal, err := r.timeHelper.FromISO8601(*v.S)
 			if err != nil {
 				return nil, err

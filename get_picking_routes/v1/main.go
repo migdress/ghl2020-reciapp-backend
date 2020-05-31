@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -71,6 +72,7 @@ func Adapter(
 		maxTime := now.Add(time.Hour * time.Duration(hoursOffset))
 
 		// Query for routes
+		log.Printf("finding routes between (%v) and (%v)\n", now, maxTime)
 		routes, err := routesRepo.FindAvailableRoutes(now, maxTime)
 		if err != nil {
 			if err == repositories.ErrUserNotFound {
@@ -79,6 +81,7 @@ func Adapter(
 
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
+		log.Printf("got %v routes\n %#v", len(routes), routes)
 
 		// Prepare response
 		responseRoutes := make([]ResponseRoute, len(routes))
@@ -87,7 +90,6 @@ func Adapter(
 			for j, pp := range route.PickingPoints {
 				responseRoutesPickingPoints[j] = ResponseRoutePickingPoint{
 					ID:         pp.ID,
-					Name:       pp.Name,
 					LocationID: pp.LocationID,
 					Country:    pp.Country,
 					City:       pp.City,
