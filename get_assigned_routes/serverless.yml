@@ -1,0 +1,46 @@
+service: get-available-routes
+
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+plugins:
+  - serverless-domain-manager
+
+custom:
+  config: ${file(../config.${self:provider.stage}.yml):config}
+  customDomain:
+    active: true
+    stage: ${self:provider.stage}
+    domainName: get-available-routes.reciapp.quartrino.com
+    createRoute53Record: true
+
+provider:
+  name: aws
+  stage: ${opt:stage, 'dev'}
+  region: us-east-1
+  runtime: go1.x
+  environment:
+    DYNAMODB_PICKING_ROUTES: ${self:custom.config.dynamodb_picking_routes}
+    HOURS_OFFSET: ${self:custom.config.hours_offset}
+    TIMEZONE: ${self:custom.config.timezone}
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}
+        - arn:aws:dynamodb:${self:provider.region}:${self:custom.config.account}:table/${self:custom.config.dynamodb_picking_routes}/index/*
+
+package:
+  exclude:
+    - ./**
+  include:
+    - ./bin/**
+
+functions:
+  v1:
+    handler: bin/v1
+    events:
+      - http:
+          path: v1/{user_id}
+          method: get
