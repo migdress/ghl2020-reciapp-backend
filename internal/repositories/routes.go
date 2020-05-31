@@ -16,6 +16,7 @@ import (
 var ErrRouteNotFound = errors.New("route not found")
 var ErrRouteAlreadyAssigned = errors.New("route already assigned")
 var ErrPickingPointAlreadyPinned = errors.New("picking point already pinned")
+var ErrNoOpenShifts = errors.New("there is no open shifts")
 
 type TimeHelper interface {
 	ToISO8601(d time.Time) (string, error)
@@ -110,6 +111,45 @@ func (r *DynamoDBRoutesRepository) FindAvailableRoutes(
 			},
 			":unassigned": {
 				S: aws.String("-"),
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.hydrateRoutes(out.Items)
+}
+
+func (r *DynamoDBRoutesRepository) FindOpenShifts(
+	currentTime time.Time,
+	maxTime time.Time,
+) ([]models.Route, error) {
+	nowString, err := r.timeHelper.ToISO8601(currentTime)
+	if err != nil {
+		return nil, err
+	}
+
+	thenString, err := r.timeHelper.ToISO8601(maxTime)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := r.client.Query(&dynamodb.QueryInput{
+		TableName:              aws.String(r.tableRoutes),
+		IndexName:              aws.String("by_status_and_starts_at"),
+		KeyConditionExpression: aws.String("#status = :open AND starts_at BETWEEN :now AND :then"),
+		ExpressionAttributeNames: map[string]*string{
+			"#status": aws.String("status"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":open": {
+				S: aws.String(models.RouteStatusOpen),
+			},
+			":now": {
+				S: aws.String(nowString),
+			},
+			":then": {
+				S: aws.String(thenString),
 			},
 		},
 	})

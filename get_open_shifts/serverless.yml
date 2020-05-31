@@ -1,4 +1,4 @@
-service: get-available-routes
+service: get-open-shifts
 
 frameworkVersion: ">=1.28.0 <2.0.0"
 
@@ -10,7 +10,7 @@ custom:
   customDomain:
     active: true
     stage: ${self:provider.stage}
-    domainName: get-available-routes.reciapp.quartrino.com
+    domainName: get-open-shifts.reciapp.quartrino.com
     createRoute53Record: true
 
 provider:
@@ -20,7 +20,7 @@ provider:
   runtime: go1.x
   environment:
     DYNAMODB_PICKING_ROUTES: ${self:custom.config.dynamodb_picking_routes}
-    HOURS_OFFSET: ${self:custom.config.hours_offset}
+    DAYS_OFFSET: ${self:custom.config.days_offset}
     TIMEZONE: ${self:custom.config.timezone}
 
   iamRoleStatements:

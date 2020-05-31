@@ -6,5 +6,6 @@ config:
     dynamodb_user_locations: "user_locations"
     dynamodb_picking_routes: "picking_routes"
 
-    hours_offset: 7
-
+    hours_offset: 12
+    days_offset: 7
+    timezone: "America/Bogota"
