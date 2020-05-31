@@ -109,20 +109,71 @@ func (r *DynamoDBRoutesRepository) Initiate(routeID string) error {
 	return err
 }
 
+func (r *DynamoDBRoutesRepository) FinishPickingPoint(routeID string, pickingPointIndex int, remaining int) error {
+	nowString, err := r.timeHelper.NowWithTimezoneISO8601()
+	if err != nil {
+		return err
+	}
+
+	if remaining == 1 {
+		_, err = r.client.UpdateItem(&dynamodb.UpdateItemInput{
+			TableName: aws.String(r.tableRoutes),
+			Key: map[string]*dynamodb.AttributeValue{
+				"id": {
+					S: aws.String(routeID),
+				},
+			},
+			UpdateExpression: aws.String(
+				fmt.Sprintf(`
+				set picking_points[%v].picked_at = :now, 
+				#status = :finished, 
+				finished_at = :now`, pickingPointIndex),
+			),
+			ExpressionAttributeNames: map[string]*string{
+				"#status": aws.String("status"),
+			},
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":now": {
+					S: aws.String(nowString),
+				},
+				":finished": {
+					S: aws.String(models.RouteStatusFinished),
+				},
+			},
+		})
+	} else {
+		_, err = r.client.UpdateItem(&dynamodb.UpdateItemInput{
+			TableName: aws.String(r.tableRoutes),
+			Key: map[string]*dynamodb.AttributeValue{
+				"id": {
+					S: aws.String(routeID),
+				},
+			},
+			UpdateExpression: aws.String(
+				fmt.Sprintf(`set picking_points[%v].picked_at = :now`, pickingPointIndex),
+			),
+			ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+				":now": {
+					S: aws.String(nowString),
+				},
+			},
+		})
+	}
+
+	return err
+}
+
 func (r *DynamoDBRoutesRepository) GetAssignedRoutesbyUserID(userID string) ([]models.Route, error) {
 	out, err := r.client.Query(&dynamodb.QueryInput{
 		TableName:              aws.String(r.tableRoutes),
-		IndexName:              aws.String("by_gatherer_id_and_status"),
-		KeyConditionExpression: aws.String("gatherer_id = :userID and #status = :assigned"),
-		ExpressionAttributeNames: map[string]*string{
-			"#status": aws.String("status"),
-		},
+		IndexName:              aws.String("by_gatherer_id_and_unfinished"),
+		KeyConditionExpression: aws.String("gatherer_id = :userID and finished_at = :unfinished"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":userID": {
 				S: aws.String(userID),
 			},
-			":assigned": {
-				S: aws.String(models.RouteStatusAssigned),
+			":unfinished": {
+				S: aws.String("-"),
 			},
 		},
 	})

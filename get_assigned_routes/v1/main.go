@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -18,6 +19,7 @@ import (
 )
 
 var ErrUserIDEmpty = errors.New("user_id cannot be empty")
+var ErrWrongUserType = errors.New("user must be of type gatherer")
 
 type Handler func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
 
@@ -72,7 +74,7 @@ func Adapter(
 			return internal.Error(http.StatusBadRequest, ErrUserIDEmpty), nil
 		}
 
-		_, err := usersRepo.Find(userID)
+		user, err := usersRepo.Find(userID)
 		if err != nil {
 			if err == repositories.ErrUserNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
@@ -81,9 +83,15 @@ func Adapter(
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 
+		if user.Type != models.UserTypeGatherer {
+			return internal.Error(http.StatusForbidden, ErrWrongUserType), nil
+		}
+
+		log.Printf("looking for routes assigned to gatherer_id(%v)\n", user.ID)
 		routes, err := routesRepo.GetAssignedRoutesbyUserID(userID)
 		if err != nil {
 			if err == repositories.ErrNoAssignedRoutes {
+				log.Printf("no assigned route found")
 				responseBytes, _ := json.Marshal(Response{
 					AssignedRoutes: []ResponseRoute{},
 				})
@@ -91,6 +99,7 @@ func Adapter(
 			}
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
+		log.Printf("found (%v) routes assigned\n", len(routes))
 
 		assignedresponseRoutes := make([]ResponseRoute, len(routes))
 		for i, route := range routes {
@@ -171,6 +180,7 @@ func main() {
 		timeHelper,
 		uuidHelper,
 	)
+
 	handler := Adapter(routesRepo, usersRepo, timeHelper)
 	lambda.Start(handler)
 }

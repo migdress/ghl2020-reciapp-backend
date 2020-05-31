@@ -13,7 +13,7 @@ const (
 	RouteStatusClosed    = "closed"    // Shows up to the gatherer
 	RouteStatusAssigned  = "assigned"  // Shows up only to the assigned gatherer
 	RouteStatusInitiated = "initiated" // Shows up only to the assigned gatherer when it's been initiated
-	RouteStatusFinished  = "finished"  // Gathere has finished all the picking points
+	RouteStatusFinished  = "finished"  // Gatherer has finished all the picking points
 	RouteStatusCancelled = "cancelled" // to be defined
 )
 

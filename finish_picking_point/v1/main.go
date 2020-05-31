@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Globhack/ghl2020-reciapp-backend/internal"
 	"github.com/Globhack/ghl2020-reciapp-backend/internal/models"
@@ -16,23 +18,27 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-var ErrUsernameEmpty = errors.New("username cannot be empty")
+var ErrUserIDEmpty = errors.New("user_id cannot be empty")
 var ErrRouteIDEmpty = errors.New("route_id  cannot be empty")
 var ErrPickingPointIDEmpty = errors.New("picking_point_id  cannot be empty")
-var ErrNoRouteGatherer = errors.New("gatherer_id  not have this route ")
+var ErrPickingPointNotFoundInRoute = errors.New("given picking point does not exist in route")
+var ErrWrongUserType = errors.New("user must be of type gatherer")
+var ErrWrongGathererID = errors.New("the route is not assigned to the given gatherer id")
 
 type Handler func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
 
 type UsersRepository interface {
-	FindByUsername(userID string) (models.User, error)
+	Find(userID string) (models.User, error)
 }
 
-type RouteRepository interface {
-	FindByRoute(routeID string) (models.Route, error)
+type RoutesRepository interface {
+	Find(routeID string) (models.Route, error)
+	FinishPickingPoint(routeID string, pickingPointIndex int, remaining int) error
 }
 
-type FinishPickingPointRepository interface {
-	FinishPickingPoint(routeID string, pickingPointID string) (models.Route, error)
+type TimeHelper interface {
+	ToLatamFormat(d time.Time) (string, error)
+	ToISO8601(d time.Time) (string, error)
 }
 
 type Request struct {
@@ -42,10 +48,15 @@ type Request struct {
 }
 
 type ResponsePickingPoint struct {
-	LocationID string  `json:"locationid"`
-	Name       string  `json:"name"`
-	Latitude   float64 `json:"latitude"`
-	Longitude  float64 `json:"longitude"`
+	ID         string   `json:"id"`
+	LocationID string   `json:"locationid"`
+	Country    string   `json:"country"`
+	City       string   `json:"city"`
+	Latitude   float64  `json:"latitude"`
+	Longitude  float64  `json:"longitude"`
+	Address1   string   `json:"address1"`
+	Address2   string   `json:"address2"`
+	Materials  []string `json:"materials"`
 }
 
 type ResponseAssignedRoute struct {
@@ -58,7 +69,11 @@ type ResponseAssignedRoute struct {
 	PickingPoints []ResponsePickingPoint
 }
 
-func Adapter(usersRepo UsersRepository, routeRepo RouteRepository, finishppRepo FinishPickingPointRepository) Handler {
+func Adapter(
+	usersRepo UsersRepository,
+	routesRepo RoutesRepository,
+	timeHelper TimeHelper,
+) Handler {
 	return func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 		reqBody := Request{}
@@ -68,17 +83,16 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository, finishppRepo 
 		}
 
 		if reqBody.UserID == "" {
-			return internal.Error(http.StatusBadRequest, ErrUsernameEmpty), nil
+			return internal.Error(http.StatusBadRequest, ErrUserIDEmpty), nil
 		}
 		if reqBody.RouteID == "" {
 			return internal.Error(http.StatusBadRequest, ErrRouteIDEmpty), nil
 		}
 		if reqBody.PickingPointId == "" {
-			return internal.Error(http.StatusBadRequest, ErrRouteIDEmpty), nil
+			return internal.Error(http.StatusBadRequest, ErrPickingPointIDEmpty), nil
 		}
 
-		_, err = usersRepo.FindByUsername(reqBody.UserID)
-
+		user, err := usersRepo.Find(reqBody.UserID)
 		if err != nil {
 			if err == repositories.ErrUserNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
@@ -86,7 +100,11 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository, finishppRepo 
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 
-		route, err := routeRepo.FindByRoute(reqBody.RouteID)
+		if user.Type != models.UserTypeGatherer {
+			return internal.Error(http.StatusForbidden, ErrWrongUserType), nil
+		}
+
+		route, err := routesRepo.Find(reqBody.RouteID)
 		if err != nil {
 			if err == repositories.ErrRouteNotFound {
 				return internal.Error(http.StatusNotFound, err), nil
@@ -94,31 +112,64 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository, finishppRepo 
 			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 
-		if reqBody.UserID != route.GathererID {
-			return internal.Error(http.StatusForbidden, err), nil
+		if user.ID != route.GathererID {
+			return internal.Error(http.StatusForbidden, ErrWrongGathererID), nil
 		}
 
 		exists := false
+		alreadyPicked := false
+		pickingPointIndex := -1
+		now := time.Now()
+		remaining := len(route.PickingPoints)
+		log.Printf("looping through (%v) picking points\n", len(route.PickingPoints))
 		for i, pp := range route.PickingPoints {
+			if pp.PickedAt != nil {
+				remaining--
+			}
+
 			if pp.ID == reqBody.PickingPointId {
-				exists=true
+				log.Printf("found match! current index is (%v)\n", i)
+				exists = true
+				pickingPointIndex = i
+
+				if pp.PickedAt != nil {
+					alreadyPicked = true
+				}
+
+				route.PickingPoints[i].PickedAt = &now
 				break
 			}
 		}
 		if !exists {
-			return internal.Error(http.StatusForbidden, err), nil
+			return internal.Error(http.StatusUnprocessableEntity, ErrPickingPointNotFoundInRoute), nil
 		}
-		
-		pp, err := finishppRepo.FinishPickingPoint(reqBody.UserID, reqBody.RouteID, reqBody.PickingPointId)
 
-		responseRoutePickingPoints := make([]ResponsePickingPoint, len(route.PickingPoints))
-		for i, pp := range route.PickingPoints {
-			responseRoutePickingPoints[i] = ResponsePickingPoint{
-				LocationID: pp.LocationID,
-				Name:       pp.Name,
-				Latitude:   pp.Latitude,
-				Longitude:  pp.Longitude,
+		if !alreadyPicked {
+			err = routesRepo.FinishPickingPoint(route.ID, pickingPointIndex, remaining)
+			if err != nil {
+				return internal.Error(http.StatusInternalServerError, err), nil
 			}
+		}
+
+		responseRoutePickingPoints := []ResponsePickingPoint{}
+		for _, pp := range route.PickingPoints {
+			if pp.PickedAt == nil {
+				responseRoutePickingPoints = append(responseRoutePickingPoints, ResponsePickingPoint{
+					ID:         pp.ID,
+					LocationID: pp.LocationID,
+					Country:    pp.Country,
+					City:       pp.City,
+					Latitude:   pp.Latitude,
+					Longitude:  pp.Longitude,
+					Address1:   pp.Address1,
+					Address2:   pp.Address2,
+					Materials:  pp.Materials,
+				})
+			}
+		}
+		startsAt, err := timeHelper.ToISO8601(*route.StartsAt)
+		if err != nil {
+			return internal.Error(http.StatusInternalServerError, err), nil
 		}
 		responseAssignedRoute := ResponseAssignedRoute{
 			ID:            route.ID,
@@ -126,7 +177,7 @@ func Adapter(usersRepo UsersRepository, routeRepo RouteRepository, finishppRepo 
 			Sector:        route.Sector,
 			Status:        route.Status,
 			Shift:         route.Shift,
-			Date:          route.Date,
+			Date:          startsAt,
 			PickingPoints: responseRoutePickingPoints,
 		}
 
@@ -144,31 +195,38 @@ func main() {
 	if usersTable == "" {
 		panic("DYNAMODB_USERS cannot be empty")
 	}
-	locationsTable := os.Getenv("DYNAMODB_LOCATIONS")
-	if locationsTable == "" {
-		panic("DYNAMODB_LOCATIONS cannot be empty")
+
+	routesTable := os.Getenv("DYNAMODB_PICKING_ROUTES")
+	if routesTable == "" {
+		panic("DYNAMODB_PICKING_ROUTES cannot be empty")
 	}
-	userLocationsTable := os.Getenv("DYNAMODB_USER_LOCATIONS")
-	if userLocationsTable == "" {
-		panic("DYNAMODB_USER_LOCATIONS cannot be empty")
+
+	timezone := os.Getenv("TIMEZONE")
+	if timezone == "" {
+		panic("TIMEZONE cannot be empty")
 	}
+
+	timeHelper, err := internal.NewTimeHelper(timezone)
+	if err != nil {
+		panic(err)
+	}
+
+	uuidHelper := internal.NewUUIDHelper()
 
 	session := session.New()
 	dynamodbClient := dynamodb.New(session)
+
 	usersRepo := repositories.NewDynamoDBUsersRepository(
 		dynamodbClient,
 		usersTable,
 	)
-	locationsRepo := repositories.NewDynamoDBLocationsRepository(
+	routesRepo := repositories.NewDynamoDBRoutesRepository(
 		dynamodbClient,
-		userLocationsTable,
-		locationsTable,
+		routesTable,
+		timeHelper,
+		uuidHelper,
 	)
 
-	handler := Adapter(usersRepo, locationsRepo)
+	handler := Adapter(usersRepo, routesRepo, timeHelper)
 	lambda.Start(handler)
-}
-
-func validate_pp() {
-
 }

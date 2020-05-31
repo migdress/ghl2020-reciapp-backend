@@ -45,6 +45,7 @@ type Request struct {
 }
 
 type ResponsePickingPoint struct {
+	ID         string   `json:"id"`
 	Country    string   `json:"country"`
 	City       string   `json:"city"`
 	Address1   string   `json:"address_1"`
@@ -125,6 +126,7 @@ func Adapter(
 		responseRoutePickingPoints := make([]ResponsePickingPoint, len(route.PickingPoints))
 		for i, pp := range route.PickingPoints {
 			responseRoutePickingPoints[i] = ResponsePickingPoint{
+				ID:         pp.ID,
 				Country:    pp.Country,
 				City:       pp.City,
 				Address1:   pp.Address1,
