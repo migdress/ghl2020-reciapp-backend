@@ -21,6 +21,7 @@ provider:
   environment:
     DYNAMODB_PICKING_ROUTES: ${self:custom.config.dynamodb_picking_routes}
     HOURS_OFFSET: ${self:custom.config.hours_offset}
+    TIMEZONE: ${self:custom.config.timezone}
 
   iamRoleStatements:
     - Effect: Allow
