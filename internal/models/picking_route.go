@@ -22,6 +22,7 @@ type PickingPoint struct {
 type Route struct {
 	ID            string `json:"id"`
 	Materials     []string
+	Status        string `json:"status"`
 	Sector        string `json:"sector"`
 	Shift         string `json:"shift"`
 	Date          string `json:"date"`
