@@ -127,7 +127,7 @@ resource "aws_dynamodb_table" "PickingRoute-dynamodb-table" {
   }
 
   attribute {
-    name = "active"
+    name = "status"
     type = "N"
   }
 
@@ -136,8 +136,8 @@ resource "aws_dynamodb_table" "PickingRoute-dynamodb-table" {
     type = "S"
   }
   global_secondary_index {
-    name            = "by_active_and_starts_at"
-    hash_key        = "active"
+    name            = "by_status_and_starts_at"
+    hash_key        = "status"
     range_key       = "starts_at"
     write_capacity  = 2
     read_capacity   = 2
